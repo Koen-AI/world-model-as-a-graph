@@ -1,33 +1,24 @@
-# World Model as a Graph
+# Learning Latent Landmarks for Planning: Planning over Longer Distances
+![pytorch](https://img.shields.io/badge/pytorch-v1.5.1+cu101-blue.svg) ![tensorflow](https://img.shields.io/badge/tensorflow-v1.13.1-blue.svg) ![license](https://img.shields.io/badge/license-MIT-blue.svg)
 
-This is the code accompanying the paper: **World Model as a Graph: 
-Learning Latent Landmarks for Planning** (ICML 2021 Long Presentation). 
+This project is an extension of the paper: [**World Model as a Graph: 
+Learning Latent Landmarks for Planning**](https://arxiv.org/abs/2011.12491) ([GitHub](https://github.com/LunjunZhang/world-model-as-a-graph)) by Zhang et al. **World Model as a Graph: 
+Learning Latent Landmarks for Planning** introduces a Model-based RL agent that generates a graph representation of its environment. They achieve this by generating landmarks, estimating the distance (i.e., the weights of the edges) between each pair of landmarks using the DDPG-critic. However, the longer the distance the less accurate the predictions are. To solve this, all edges are pruned that have a higher value than a threshold, **d<sub>max</sub>**.
 
-By [Lunjun Zhang](http://www.cs.toronto.edu/~lunjun/), [Ge Yang](https://scholar.google.com/citations?user=vaQcF6kAAAAJ), 
-[Bradly Stadie](https://bstadie.github.io/).
+## Our contribution
 
-A link to our paper can be found on [arXiv](https://arxiv.org/abs/2011.12491).
+We introduce a new parameter: **d<sub>min</sub>**; as well as a **scheduler** for both parameters: **d<sub>max</sub>** and **d<sub>min</sub>** in order to change them during the training procedure. This contribution is highlighted, in grey, in the figure below.
 
-Videos / blog can be found on our [website](https://sites.google.com/view/latent-landmarks/).
+<p align="center">
+    <img  src="./figures/overview.png"  width=50% height=50%>
+</p>
 
-## Overview
+Please read the included [paper](./paper.pdf) for all the details with regards to our contribution. Demos of each scheduled agent are published on [YouTube](https://www.youtube.com/playlist?list=PLlmEThkxGpCoX7qdYt6kuM4uNPhSeU5mo).
 
-![image info](./figures/l3p.png)
+## Requirements
 
-Model-based RL agents today plan using step-by-step virtual rollouts in a learned dynamics model. 
-This type of world model quickly diverges from reality as the planning horizon increases. 
-Humans, however, can do planning by **analyzing the structure of a problem in the large** 
-and **decomposing it into simpler sub-problems**. 
-How can we teach learning agents to do something similar? 
+The same packages as the original paper also apply to this repo:
 
-We enhance RL agents’ ability to do temporally extended reasoning by learning a graph-structured world model 
-composed of sparse, multi-step transitions. 
-We show how to **learn both the nodes and the edges** on the graph together with a goal-conditioned policy, 
-and how to better leverage **temporal abstraction** in online planning.
-
-## Instructions
-
-Requirements: 
 ```
 python==3.7.4
 numpy==1.19.5
@@ -39,23 +30,25 @@ mujoco_py==2.0.2.13
 pandas==1.1.1
 ```
 
-The implementation of 
-<img src="https://latex.codecogs.com/gif.latex?L^{3}P " /> 
- is provided in the `rl` folder.
 
-The training scripts are provided in `scripts` folder. 
+## Additional parameters
+In order to run the code using schedulers one can add the following parameters to the call of `main_latent.py`:
 
-## Citations
+* --square             : this parameter is used 
+* --d_scheduler \["type"\] : this parameter is used to specify the type of scheduler: "linear", "exponential", or "logarithmic"
+* --scheduler_max      : used to activate the max scheduler (can be used together with the min scheduler)
+* --scheduler_min      : used to activate the min scheduler (can be used together with the max scheduler)
+* --omega_max \[float\]    : a parameter for specify the length/width of the max scheduler
+* --omega_min \[float\]    : a parameter for specify the length/width of the min scheduler
+* --varpi \[float\]        : a parameter for specify the height of the min scheduler
+* --test_scheduler     : a parameter used to plot the scheduler 
+* --video \[int\]          : a parameter to make int amount of videos, for a demo
+* --plot \[int\]           : a parameter to make int amount of trajectory plots in one figure, for a demo
+* --legend             : used in conjunction with the plot parameter, toggles the legend of the plot
+* --output             : used in conjunction with the plot or video parameters to specify the name of the output file
 
-Please cite our paper as:
+This is not a parameter we added, but d_window is set by the --dist_clip \[float\] parameter.
 
-```
-@inproceedings{zhang2021worldmodel,
-  title={World model as a graph: Learning latent landmarks for planning},
-  author={Zhang, Lunjun and Yang, Ge and Stadie, Bradly C},
-  booktitle={International Conference on Machine Learning},
-  pages={12611--12620},
-  year={2021},
-  organization={PMLR}
-}
-```
+
+
+The `scripts`-directory contains all scripts that are used in order to conduct the experiments from the our paper. This includes the correct seeds and number of replications. There is also `args.txt`, which contains a brief description of most parameters that can be set via the command line.
