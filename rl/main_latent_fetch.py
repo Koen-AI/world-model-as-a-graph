@@ -86,6 +86,9 @@ def get_args():
     
     parser.add_argument('--use_reverse_dist_func', action='store_true')
     
+    #new stuffs:
+    parser.add_argument('--square', type=bool, default=False)
+    
     return parser.parse_args()
 
 

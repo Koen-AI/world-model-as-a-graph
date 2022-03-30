@@ -38,7 +38,7 @@ class StochasticActor(nn.Module):
         if deterministic:
             pi_action = mean
         else:
-            pi_action = pi_dist.rsample()
+            pi_action = pi_dist.rsample()   # Returns reparameterized sample
         logp_pi = None
         if with_logprob:
             logp_pi = pi_dist.log_prob(pi_action).sum(axis=-1)
@@ -47,10 +47,12 @@ class StochasticActor(nn.Module):
         return pi_action, logp_pi
 
 
+# Q-function with input state, action and goal
+# = neural network
 class Qfunc(nn.Module):
     def __init__(self, env_params, args):
         super().__init__()
-        input_dim = env_params['obs'] + env_params['goal'] + env_params['action']
+        input_dim = env_params['obs'] + env_params['goal'] + env_params['action']  # Q(s,a,g)
         self.q_func = net_utils.mlp([input_dim] + [args.hid_size] * args.n_hids + [1], activation=args.activ)
     
     def forward(self, *args):
@@ -58,6 +60,7 @@ class Qfunc(nn.Module):
         return torch.squeeze(q_value, -1)
 
 
+# Two neural networks, each modelling Q(s,a,g)
 class DoubleQfunc(nn.Module):
     def __init__(self, env_params, args):
         super().__init__()
@@ -75,7 +78,7 @@ class Actor(nn.Module):
         super().__init__()
         self.act_limit = env_params['action_max']
         
-        input_dim = env_params['obs'] + env_params['goal']
+        input_dim = env_params['obs'] + env_params['goal']  # state, goal
         self.net = net_utils.mlp(
             [input_dim] + [args.hid_size] * args.n_hids,
             activation=args.activ, output_activation=args.activ)
@@ -93,7 +96,7 @@ class Critic(nn.Module):
         super().__init__()
         self.act_limit = env_params['action_max']
         
-        input_dim = env_params['obs'] + env_params['goal'] + env_params['action']
+        input_dim = env_params['obs'] + env_params['goal'] + env_params['action']  # state, action, goal
         self.net = net_utils.mlp(
             [input_dim] + [args.hid_size] * args.n_hids + [1],
             activation=args.activ)
@@ -163,6 +166,7 @@ class BaseAgent:
         self.load_state_dict(state_dict)
 
 
+# Comments for this class can be seen in rl/agent/latent_planner.py
 class Agent(BaseAgent):
     def __init__(self, env_params, args, name='agent'):
         super().__init__(env_params, args, name=name)

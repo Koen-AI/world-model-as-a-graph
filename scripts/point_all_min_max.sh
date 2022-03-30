@@ -1,0 +1,11 @@
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 999 --cuda --d_scheduler exponential --scheduler_min --scheduler_max # #--n_workers 3
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 998 --cuda --d_scheduler exponential --scheduler_min --scheduler_max # #--n_workers 3
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 997 --cuda --d_scheduler exponential --scheduler_min --scheduler_max # #--n_workers 3
+
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 320 --cuda --d_scheduler linear --scheduler_min --scheduler_max # #--n_workers 3
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 640 --cuda --d_scheduler linear --scheduler_min --scheduler_max # #--n_workers 3
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 1280 --cuda --d_scheduler linear --scheduler_min --scheduler_max # #--n_workers 3
+
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 35 --cuda --d_scheduler logarithmic --scheduler_min --scheduler_max # #--n_workers 3
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 67 --cuda --d_scheduler logarithmic --scheduler_min --scheduler_max # #--n_workers 3
+python -m rl.main_latent --env_name PointMaze-v1 --test_env_name PointMazeTest-v1 --n_epochs 360 --buffer_size 1000000 --batch_size 512 --grad_value_clipping -1.0 --seed 131 --cuda --d_scheduler logarithmic --scheduler_min --scheduler_max # #--n_workers 3

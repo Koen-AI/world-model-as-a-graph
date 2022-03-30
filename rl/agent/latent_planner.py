@@ -15,7 +15,8 @@ from rl.agent.normalizer import Normalizer
 
 from rl.utils import mpi_utils, net_utils
 
-
+# ===============================
+# Value function = neural network
 class ValueFunction(nn.Module):
     def __init__(self, env_params, args):
         super().__init__()
@@ -27,8 +28,10 @@ class ValueFunction(nn.Module):
     def forward(self, inputs):
         v_values = self.net(inputs).squeeze()
         return v_values
+# ===============================
 
 
+# ========= AUTOENCODER =========
 class MlpEncoder(nn.Module):
     def __init__(self, env_params, args):
         super().__init__()
@@ -39,6 +42,7 @@ class MlpEncoder(nn.Module):
             activation=args.activ, output_activation=args.activ)
         self.encode = nn.Linear(args.ae_hid_size, output_dim)
     
+    #returns
     def forward(self, inputs):
         outputs = self.net(inputs)
         encode = self.encode(outputs)
@@ -71,13 +75,15 @@ class MlpAutoEncoder(nn.Module):
         latent_code = self.encoder(inputs)
         reconstruct = self.decoder(latent_code)
         return latent_code, reconstruct
+# ===============================
 
 
+# TODO ========= CLUSTERING ========== TODO
 class Cluster(nn.Module):
     def __init__(self, env_params, args):
         super().__init__()
         self.env_params = env_params
-        self.n_mix = args.n_latent_landmarks
+        self.n_mix = args.n_latent_landmarks # N centroids/landmarks
         self.z_dim = args.embed_size
         self.comp_mean = nn.Parameter(torch.randn(self.n_mix, self.z_dim) * np.sqrt(1.0 / self.n_mix))
         self.comp_logstd = nn.Parameter(torch.randn(1, self.z_dim) * 1 / np.e, requires_grad=True)
@@ -95,6 +101,7 @@ class Cluster(nn.Module):
         comp_log_prob = comp_dist.log_prob(x).sum(dim=-1)  # (nbatch, n_mix)
         return comp_log_prob
     
+    #this function is what is returned when Agent.clusters is called
     def forward(self, x, with_elbo=True):
         if x.ndim == 1:
             x = x.unsqueeze(0)
@@ -102,14 +109,18 @@ class Cluster(nn.Module):
         log_mix_probs = torch.log_softmax(self.mix_logit, dim=-1).unsqueeze(0)  # (1, n_mix)
         assert log_mix_probs.size(0) == 1 and log_mix_probs.size(1) == self.n_mix
         
+        #softmax to compensate for model inaccuracies
         prior_prob = torch.softmax(self.mix_logit, dim=0).unsqueeze(0)
         log_comp_probs = self.component_log_prob(x)  # (nbatch, n_mix)
         
+        #pretarations for ELBO
         log_prob_x = torch.logsumexp(log_mix_probs + log_comp_probs, dim=-1, keepdim=True)  # (nbatch, 1)
         log_posterior = log_comp_probs + log_mix_probs - log_prob_x  # (nbatch, n_mix)
         posterior = torch.exp(log_posterior)
+        
+        #here ELBO is returned: 
         if with_elbo:
-            kl_from_prior = kl_divergence(Categorical(probs=posterior), Categorical(probs=prior_prob))
+            kl_from_prior = kl_divergence(Categorical(probs=posterior), Categorical(probs=prior_prob)) #Equation 5
             return posterior, dict(
                 comp_log_prob=log_comp_probs,
                 log_data=(posterior * log_comp_probs).sum(dim=-1),
@@ -130,8 +141,10 @@ class Cluster(nn.Module):
     
     def assign_centroids(self, x):
         self.comp_mean.data.copy_(x)
+# TODO =============================== TODO
 
 
+# ============ AGENT ============
 class Agent(BaseAgent):
     def __init__(self, env_params, args, name='agent'):
         super().__init__(env_params, args, name=name)
@@ -143,15 +156,18 @@ class Agent(BaseAgent):
             mpi_utils.sync_networks(self.actor)
             mpi_utils.sync_networks(self.critic)
         
+        # Target networks
         self.actor_targ = Actor(env_params, args)
         self.critic_targ = DistCritic(env_params, args)
         
         self.actor_targ.load_state_dict(self.actor.state_dict())
         self.critic_targ.load_state_dict(self.critic.state_dict())
         
+        # Do not compute gradient after every iteration
         net_utils.set_requires_grad(self.actor_targ, allow_grad=False)
         net_utils.set_requires_grad(self.critic_targ, allow_grad=False)
         
+        # Create instances of V, AE and clustering
         self.vf = ValueFunction(env_params, args)
         self.ae = MlpAutoEncoder(env_params, args)
         self.cluster = Cluster(env_params, args)
@@ -159,9 +175,11 @@ class Agent(BaseAgent):
         if self.args.cuda:
             self.cuda()
         
+        # Normalizes observations and goals, is updated with new samples with normalizer_update
         self.o_normalizer = Normalizer(size=env_params['obs'], default_clip_range=self.args.clip_range)
         self.g_normalizer = Normalizer(size=env_params['goal'], default_clip_range=self.args.clip_range)
     
+    # Enable GPU-usage
     def cuda(self):
         self.actor.cuda()
         self.critic.cuda()
@@ -198,7 +216,7 @@ class Agent(BaseAgent):
             obs = self.o_normalizer.normalize(obs)
             goal = self.g_normalizer.normalize(goal)
         return self.to_tensor(self._concat(obs, goal))
-    
+
     def get_actions(self, obs, goal):
         obs, goal = self._preprocess_inputs(obs, goal)
         inputs = self._process_inputs(obs, goal)
@@ -212,6 +230,7 @@ class Agent(BaseAgent):
         pis = self.actor(inputs)
         return pis
     
+    # Get Q-value from critic
     def get_qs(self, obs, goal, actions):
         obs, goal = self._preprocess_inputs(obs, goal)
         inputs = self._process_inputs(obs, goal)
@@ -222,16 +241,18 @@ class Agent(BaseAgent):
     def forward(self, obs, goal, q_target=False, pi_target=False):
         obs, goal = self._preprocess_inputs(obs, goal)
         inputs = self._process_inputs(obs, goal)
-        q_net = self.critic_targ if q_target else self.critic
+        q_net = self.critic_targ if q_target else self.critic    # Pick between actual and target network
         a_net = self.actor_targ if pi_target else self.actor
         pis = a_net(inputs)
         qs = q_net(inputs, pis)
         return qs, pis
     
+    # Update target network with actual network according to a soft update
     def target_update(self):
         net_utils.target_soft_update(source=self.actor, target=self.actor_targ, polyak=self.args.polyak)
         net_utils.target_soft_update(source=self.critic, target=self.critic_targ, polyak=self.args.polyak)
     
+    # Update normalizer with new samples
     def normalizer_update(self, obs, goal):
         obs, goal = self._preprocess_inputs(obs, goal)
         self.o_normalizer.update(obs)
@@ -239,6 +260,7 @@ class Agent(BaseAgent):
         self.o_normalizer.recompute_stats()
         self.g_normalizer.recompute_stats()
     
+    # Actor determines action pis based on state and goal, this is then given to critic
     def pairwise_value(self, obs, goal):
         obs, goal = self._preprocess_inputs(obs, goal)
         inputs = self._process_inputs(obs, goal)
@@ -246,11 +268,13 @@ class Agent(BaseAgent):
         dist = self.critic.get_dist(inputs, pis)  # this is positive
         return -dist
     
+    # Critic is used to get the distance from s to g when performing a
+    # So, the critic models Q(s,a,g)
     def get_dists(self, obs, goal, actions):
         obs, goal = self._preprocess_inputs(obs, goal)
         inputs = self._process_inputs(obs, goal)
         actions = self.to_tensor(actions)
-        dist = self.critic.get_dist(inputs, actions)  # this is positive
+        dist = self.critic.get_dist(inputs, actions)  # Dist from s -> g when performing a (positive value)
         return dist
     
     def _process_vf_inputs(self, ag, bg):
@@ -264,9 +288,10 @@ class Agent(BaseAgent):
             bg = self.g_normalizer.normalize(bg)
         return self.to_tensor(self._concat(ag, bg))
     
+    # Compute number of steps it would take for policy to go from goal ag to goal bg
     def get_vf_value(self, ag, bg):
         inputs = self._process_vf_inputs(ag, bg)
-        vf_value = self.vf(inputs)
+        vf_value = self.vf(inputs)  # This is simply getting the output from the Value-nn
         return vf_value
     
     def state_dict(self):
@@ -285,3 +310,4 @@ class Agent(BaseAgent):
         self.cluster.load_state_dict(state_dict['cluster'])
         self.o_normalizer.load_state_dict(state_dict['o_normalizer'])
         self.g_normalizer.load_state_dict(state_dict['g_normalizer'])
+# ===============================

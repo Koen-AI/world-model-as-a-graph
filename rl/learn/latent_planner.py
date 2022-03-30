@@ -20,14 +20,15 @@ class Learner:
         self.monitor = monitor
         self.args = args
         
-        self.q_optim = Adam(agent.critic.parameters(), lr=args.lr_critic)
-        self.pi_optim = Adam(agent.actor.parameters(), lr=args.lr_actor)
-        self.v_optim = Adam(agent.vf.parameters(), lr=args.lr_critic)
-        self.ae_optim = Adam(agent.ae.parameters(), lr=args.lr_ae)
-        self.c_optim = Adam(agent.cluster.parameters(), lr=args.lr_cluster)
+        self.q_optim = Adam(agent.critic.parameters(), lr=args.lr_critic)   # Critic
+        self.pi_optim = Adam(agent.actor.parameters(), lr=args.lr_actor)    # Actor
+        self.v_optim = Adam(agent.vf.parameters(), lr=args.lr_critic)       # Value
+        self.ae_optim = Adam(agent.ae.parameters(), lr=args.lr_ae)          # Autoencoder
+        self.c_optim = Adam(agent.cluster.parameters(), lr=args.lr_cluster) # Cluster
         
         self._save_file = str(name) + '.pt'
     
+    # Q-function
     def critic_loss(self, batch):
         o, a, o2, r, bg = batch['ob'], batch['a'], batch['o2'], batch['r'], batch['bg']
         r = self.agent.to_tensor(r.flatten())
@@ -35,13 +36,14 @@ class Learner:
         ag, ag2, future_ag, offset = batch['ag'], batch['ag2'], batch['future_ag'], batch['offset']
         offset = self.agent.to_tensor(offset.flatten())
         
+        # Second part of Equation 1
         with torch.no_grad():
             q_next, _ = self.agent.forward(o2, bg, q_target=True, pi_target=True)
             q_targ = r + self.args.gamma * q_next
             q_targ = torch.clamp(q_targ, -self.args.clip_return, 0.0)
         
         q_bg = self.agent.get_qs(o, bg, a)
-        loss_q = (q_bg - q_targ).pow(2).mean()
+        loss_q = (q_bg - q_targ).pow(2).mean()  
         
         q_ag2 = self.agent.get_qs(o, ag2, a)
         loss_ag2 = q_ag2.pow(2).mean()
@@ -72,7 +74,7 @@ class Learner:
         
         a = self.agent.to_tensor(a)
         
-        q_pi, pi = self.agent.forward(o, bg)
+        q_pi, pi = self.agent.forward(o, bg)  # Policy
         action_l2 = (pi / self.agent.actor.act_limit).pow(2).mean()
         loss_actor = (- q_pi).mean() + self.args.action_l2 * action_l2
         
@@ -94,9 +96,10 @@ class Learner:
         offset = self.agent.to_tensor(offset.flatten())
         
         with torch.no_grad():
-            dist_bg = self.agent.get_dists(o, bg, a)
-        v_bg = self.agent.get_vf_value(ag2, bg)  # important: use ag2 (rather than ag)
-        loss_vf = (v_bg - dist_bg).pow(2).mean()
+            dist_bg = self.agent.get_dists(o, bg, a)  # D(s, a, g) -> target value
+        
+        v_bg = self.agent.get_vf_value(ag2, bg)   # Important: use ag2 (rather than ag) as ag2 corresponds to s_2
+        loss_vf = (v_bg - dist_bg).pow(2).mean()  # Equation 4
         
         self.monitor.store(
             Loss_vf=loss_vf.item(),
@@ -110,16 +113,22 @@ class Learner:
     def ae_loss(self, batch):
         bg, ag = batch['bg'], batch['ag']
         
+        # Second part of latent loss
         with torch.no_grad():
-            v_forward = self.agent.get_vf_value(ag, bg)
-            v_backward = self.agent.get_vf_value(bg, ag)
+            v_forward = self.agent.get_vf_value(ag, bg)   # Value func
+            v_backward = self.agent.get_vf_value(bg, ag)  # Value func
             v_target = 0.5 * (v_forward + v_backward)
         
         ag = self.agent.to_tensor(ag)
         bg = self.agent.to_tensor(bg)
+
+        # For reconstruction loss
         latent_ag, recon_ag = self.agent.ae(ag)
         latent_bg, recon_bg = self.agent.ae(bg)
+
+        # First part of latent loss
         zdist = (latent_ag - latent_bg).pow(2)
+
         if self.args.embed_op == 'mean':
             zdist = zdist.mean(dim=-1)
         elif self.args.embed_op == 'sum':
@@ -128,8 +137,12 @@ class Learner:
             raise NotImplementedError
         assert zdist.ndim == v_target.ndim == 1
         
+        # Reconstruction loss
         loss_recon = 0.5 * (recon_ag - ag).pow(2).mean() + 0.5 * (recon_bg - bg).pow(2).mean()
+        # Latent loss
         loss_zdist = (zdist - v_target).pow(2).mean()
+
+        # Final AE loss
         loss_ae = loss_recon + self.args.latent_repel * loss_zdist
         
         self.monitor.store(
@@ -142,19 +155,24 @@ class Learner:
         return loss_ae
     
     def update(self, batch, train_embed=True):
+        # Update critic
         loss_critic = self.critic_loss(batch)
         self.q_optim.zero_grad()
         loss_critic.backward()
+
         if self.args.grad_norm_clipping > 0.:
             c_norm = torch.nn.utils.clip_grad_norm_(self.agent.critic.parameters(), self.args.grad_norm_clipping)
             self.monitor.store(gradnorm_critic=c_norm)
+
         if self.args.grad_value_clipping > 0.:
             self.monitor.store(gradnorm_mean_critic=net_utils.mean_grad_norm(self.agent.critic.parameters()).item())
             torch.nn.utils.clip_grad_value_(self.agent.critic.parameters(), self.args.grad_value_clipping)
+        
         if mpi_utils.use_mpi():
             mpi_utils.sync_grads(self.agent.critic, scale_grad_by_procs=True)
         self.q_optim.step()
         
+        # Update actor
         loss_actor = self.actor_loss(batch)
         self.pi_optim.zero_grad()
         loss_actor.backward()
@@ -170,6 +188,7 @@ class Learner:
         self.pi_optim.step()
         
         if train_embed:
+            # Update value
             loss_vf = self.value_loss(batch)
             self.v_optim.zero_grad()
             loss_vf.backward()
@@ -184,6 +203,7 @@ class Learner:
                 mpi_utils.sync_grads(self.agent.vf, scale_grad_by_procs=True)
             self.v_optim.step()
             
+            # Update AE
             loss_ae = self.ae_loss(batch)
             self.ae_optim.zero_grad()
             loss_ae.backward()
@@ -205,7 +225,9 @@ class Learner:
     def _has_nan(x):
         return torch.any(torch.isnan(x)).cpu().numpy() == True
     
+    # Clustering loss
     def embed_loss(self, embedding):
+        #evidence lower bound
         posterior, elbo = self.agent.cluster(embedding, with_elbo=True)
         log_data = elbo['log_data']
         kl_from_prior = elbo['kl_from_prior']
@@ -232,10 +254,10 @@ class Learner:
     def update_cluster(self, batch_ag, to_train=True):
         assert type(batch_ag) == torch.Tensor
         with torch.no_grad():
-            batch_embed = self.agent.ae.encoder(batch_ag)
-        self.c_optim.zero_grad()
+            batch_embed = self.agent.ae.encoder(batch_ag)   
+        self.c_optim.zero_grad()                            #optimize over cluster
         loss_embed = self.embed_loss(batch_embed)
-        if to_train:
+        if to_train:#clipping vs no clipping; 
             loss_embed.backward()
             if self.args.grad_norm_clipping > 0.:
                 cluster_norm = torch.nn.utils.clip_grad_norm_(
@@ -245,7 +267,7 @@ class Learner:
                 self.monitor.store(gradnorm_mean_cluster=net_utils.mean_grad_norm(
                     self.agent.cluster.parameters()).item())
                 torch.nn.utils.clip_grad_value_(self.agent.cluster.parameters(), self.args.grad_value_clipping)
-            if mpi_utils.use_mpi():
+            if mpi_utils.use_mpi():#paralellization magics
                 mpi_utils.sync_grads(self.agent.cluster, scale_grad_by_procs=True)
             self.c_optim.step()
         else:

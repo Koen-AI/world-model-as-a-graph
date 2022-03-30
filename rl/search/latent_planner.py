@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from torch.distributions import Categorical
-
+from rl.search.scheduler import Scheduler
 
 def matrix_iter(
         matrix: torch.Tensor,
@@ -62,18 +62,41 @@ def v_pairwise_dists(
     return dists
 
 
-def clip_dist(dists: torch.Tensor, clip=-5.0, inf_value=1e6, ):
-    dists = dists - (dists < clip).float() * inf_value
+def max_clip_dist(dists: torch.Tensor, clip=-5.0, inf_value=1e6, square=False):
+    if square:
+        dists = -1.0*dists*dists
+    else:
+        dists = dists - (dists < clip).float() * inf_value
     return dists
 
 
-def adaptive_clip_dist(dists: torch.Tensor, clip=-5.0, inf_value=1e6):
+def min_clip_dist(dists: torch.Tensor, clip=-15.0, inf_value=1e6):
+    dists = dists - (dists > clip).float() * inf_value
+    return dists
+
+
+def adaptive_max_clip_dist(dists: torch.Tensor, clip=-5.0, inf_value=1e6, square=False):
     assert dists.ndim == 2 and dists.size(0) == dists.size(1)
     n_states = dists.size(0)
     clip_values = clip * torch.ones(n_states).to(dists.device)
     min_dists = (dists - np.sqrt(inf_value) * torch.eye(n_states).to(dists.device)).max(dim=0)[0]
     clip_values = torch.min(min_dists, clip_values)
-    dists = dists - (dists < clip_values[None, :]).float() * inf_value
+    
+    if square:
+        dists = -1.0*dists*dists
+    else:
+        dists = dists - (dists < clip_values[None, :]).float() * inf_value
+    return dists
+
+
+def adaptive_min_clip_dist(dists: torch.Tensor, clip=-15.0, inf_value=1e6):
+    assert dists.ndim == 2 and dists.size(0) == dists.size(1)
+    n_states = dists.size(0)
+    clip_values = clip * torch.ones(n_states).to(dists.device)
+    min_dists = (dists + np.sqrt(inf_value) * torch.eye(n_states).to(dists.device)).min(dim=0)[0]
+    clip_values = torch.max(min_dists, clip_values)
+    
+    dists = dists - (dists > clip_values[None, :]).float() * inf_value
     return dists
 
 
@@ -131,6 +154,11 @@ class Planner:
         self._dists_to_landmarks = None
         self._dists = None
         self._g_list = []
+        
+        if not args.d_scheduler == None:
+            self.scheduler = Scheduler(args)
+        else:
+            self.scheduler = None
     
     @staticmethod
     def to_2d_array(x):
@@ -208,8 +236,25 @@ class Planner:
         dists = torch.cat([dists, goals_dist_ph - self.args.inf_value], dim=0)
         # (n_landmark + K) * (n_landmark + K)
         
-        dists = adaptive_clip_dist(
-            dists, clip=self.args.dist_clip, inf_value=self.args.inf_value)
+        if self.args.d_scheduler == None:
+            clip_max = self.args.dist_clip
+            dists = adaptive_max_clip_dist(
+                dists, clip=clip_max, inf_value=self.args.inf_value, square=self.args.square)
+        else:
+            if self.args.scheduler_min:
+                clip_min = self.scheduler.get_d_min()
+                dists = adaptive_min_clip_dist(
+                    dists, clip=clip_min, inf_value=self.args.inf_value)
+                #reset the distance to the final goal after min-clipping:
+                k_l = list(dists.size())[1] - n_goals #-1 here because the final one needn't be checked since it is 0 anyways
+                for k in range(k_l):                         #start    #goal
+                    dists[k][k_l] = -1. * self.agent.get_vf_value(landmarks[k], landmarks[k_l])
+                dists = torch.min(dists, dists * 0.)
+            if self.args.scheduler_max:
+                clip_max = self.scheduler.get_d_max()
+                dists = adaptive_max_clip_dist(
+                    dists, clip=clip_max, inf_value=self.args.inf_value, square=self.args.square)
+        
         dists = value_iter(dists, temp=self.args.temp, n_iter=self.args.vi_iter, )
         self.monitor.store(Graph_dist_vi=dists.mean().item())
         
@@ -246,14 +291,40 @@ class Planner:
         dists_to_landmarks = dists_to_landmarks.reshape(n_goals, -1)
         self.monitor.store(Dist_to_landmarks=dists_to_landmarks.mean().item())
         
-        dists_to_landmarks = clip_dist(
-            dists_to_landmarks, clip=self.args.dist_clip, inf_value=self.args.inf_value)
+        if self.args.d_scheduler == None:
+            clip_max = self.args.dist_clip
+            dists_to_landmarks = max_clip_dist(
+                dists_to_landmarks, clip=clip_max, inf_value=self.args.inf_value, square=self.args.square)
+        else:
+            if self.args.scheduler_min:
+                copy_dists = torch.clone(dists_to_landmarks)
+                clip_min = self.scheduler.get_d_min()
+                dists_to_landmarks = min_clip_dist(
+                    dists_to_landmarks, clip=clip_min, inf_value=self.args.inf_value)
+                #reset the distance to the final goal after min-clipping:
+                k_l = list(dists_to_landmarks.size())[1] - n_goals #-1 here because the final one needn't be checked since it is 0 anyways
+                #print(k_l)
+                #print(n_goals)
+                for w in range(n_goals):                         #start    #goal
+                    dists_to_landmarks[w][k_l] = copy_dists[w][k_l]#-1. * self.agent.get_vf_value(landmarks[k], landmarks[k_l])
+            if self.args.scheduler_max:
+                clip_max = self.scheduler.get_d_max()
+                dists_to_landmarks = max_clip_dist(
+                    dists_to_landmarks, clip=clip_max, inf_value=self.args.inf_value, square=self.args.square)
+
         self._dists_to_landmarks = dists_to_landmarks.clone()
         
         self.assert_compatible(dists_to_landmarks, self.dists_to_goals)
-        dists = dists_to_landmarks + self.dists_to_goals  # (K, n_landmark + K)
+        dists = dists_to_landmarks + self.dists_to_goals  # (K, n_landmark + K)     
         self.monitor.store(Dist_min_path=torch.min(dists).item())
         self.monitor.store(Shortest_Path=torch.min(dists, dim=-1)[0].mean().item())
+        
+        for env_id in range(obs.size(0)):
+            for i in range(len(dists[0]) - obs.size(0), len(dists[0])):
+                if i == env_id:
+                    continue
+                dists[env_id, i] -= self.args.inf_value
+        
         self._dists = dists
         
         extra_steps = 1.0
@@ -274,7 +345,6 @@ class Planner:
                     idx = Categorical(out_probs).sample()
                 except:
                     idx = torch.max(dists[env_id].cpu(), dim=-1)[1]
-                # idx = torch.max(dists[env_id], dim=-1)[1]
                 idx = int(idx.cpu().numpy())
                 steps_to_landmark = - dists_to_landmarks[env_id, idx].cpu().numpy()
                 goals[env_id] = self.landmarks[idx].detach().cpu().numpy()

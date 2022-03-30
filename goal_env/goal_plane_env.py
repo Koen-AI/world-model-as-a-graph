@@ -50,6 +50,8 @@ class GoalPlane(gym.Env):
     
     def compute_reward(self, achieved_goal, desired_goal, info):
         reward = -np.linalg.norm(achieved_goal - desired_goal, axis=-1)
+        print("achievemed_goal = ", achieved_goal)
+        print("desired_goal = ", desired_goal)
         return reward
     
     def change_mode(self, mode='mid'):

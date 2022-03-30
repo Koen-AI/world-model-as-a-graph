@@ -7,11 +7,11 @@ def get_args():
     parser.add_argument('--test_env_name', type=str, default='PointMazeTest-v1')
     parser.add_argument('--seed', type=int, default=123)
     parser.add_argument('--save_dir', type=str, default='experiments/')
-    parser.add_argument('--ckpt_name', type=str, default='')
+    parser.add_argument('--ckpt_name', type=str, default='')  # Filename of checkpoint
     parser.add_argument('--resume_ckpt', type=str, default='')
     
     parser.add_argument('--n_workers', type=int, default=1)
-    parser.add_argument('--cuda', action='store_true')
+    parser.add_argument('--cuda', action='store_true')  # GPU usage
     parser.add_argument('--num_rollouts_per_mpi', type=int, default=1)
     
     parser.add_argument('--n_epochs', type=int, default=200)
@@ -46,8 +46,7 @@ def get_args():
     parser.add_argument('--target_update_freq', type=int, default=10)
     
     parser.add_argument('--n_initial_rollouts', type=int, default=100)
-    parser.add_argument('--n_test_rollouts', type=int, default=15)
-    parser.add_argument('--demo_length', type=int, default=20)
+    parser.add_argument('--n_test_rollouts', type=int, default=15)   # Number of playouts to evaluate agent
     parser.add_argument('--play', action='store_true')
     
     parser.add_argument('--future_step', type=int, default=80)
@@ -76,7 +75,7 @@ def get_args():
     parser.add_argument('--temp', type=float, default=1.1)
     parser.add_argument('--vi_iter', type=int, default=20)
     parser.add_argument('--local_horizon', type=int, default=10)
-    parser.add_argument('--goal_eps', type=float, default=0.2)
+    parser.add_argument('--goal_eps', type=float, default=0.2)  # Radius to reach goal (since continuous problems)
     parser.add_argument('--q_offset', action='store_true')
     parser.add_argument('--cluster_std_reg', type=float, default=0.0)
     parser.add_argument('--start_planning_n_traj', type=int, default=500)
@@ -85,19 +84,57 @@ def get_args():
     parser.add_argument('--grad_value_clipping', type=float, default=5.0)
     parser.add_argument('--use_forward_empty_step', action='store_true')
     
+    # Our contributions
+    parser.add_argument('--square', type=bool, default=False)
+    
+    #Scheduler related arguments
+    parser.add_argument('--d_scheduler', type=str, default=None)
+    parser.add_argument('--scheduler_min', action='store_true')
+    parser.add_argument('--scheduler_max', action='store_true')
+    parser.add_argument('--omega_max', type=float, default=0.9)
+    parser.add_argument('--omega_min', type=float, default=1.0)
+    parser.add_argument('--varpi', type=float, default=0.8)
+    parser.add_argument('--test_scheduler', type=bool, default=False)#only used to test scheduler class
+    
+
+    # Demo related arguments
+    parser.add_argument('--video', type=int, default=0)
+    parser.add_argument('--plot', type=int, default=0)
+    parser.add_argument('--legend', action='store_true')
+    parser.add_argument('--output', type=str, default="out")
+    
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = get_args()
     n_threads = str(args.n_workers)
-    
+
+    if args.d_scheduler != None:
+        if not (args.scheduler_min or args.scheduler_max):
+            raise ValueError('Scheduler of type: ', args.d_scheduler, "; not used for a minimal or maximal clipping.\nPlease use '--scheduler_min' and/or '--scheduler_max'")
     import os
-    os.environ['OMP_NUM_THREADS'] = n_threads
+    os.environ['OMP_NUM_THREADS'] = n_threads   # Set number of threads utilised by torch
     os.environ['MKL_NUM_THREADS'] = n_threads
     os.environ['IN_MPI'] = n_threads
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
     
     from rl.launcher_latent import launch
+    if args.test_scheduler:
+        from rl.search.scheduler import Scheduler
+        scheduler = Scheduler(args)
+        scheduler.plot_schedule()
+        exit()
     algo = launch(args)
-    algo.run()
+
+    
+    if (args.video + args.plot > 0):
+        #print("success rate = ", algo.run_test_env_plan_eval())
+        algo.demo(args) 
+         
+    else:
+        algo.run()
+    
+    
+    
+    

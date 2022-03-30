@@ -10,7 +10,7 @@ from rl import logger
 from rl.utils import mpi_utils
 from rl.utils.run_utils import Timer, log_config, merge_configs
 from rl.replay.core import sample_her_transitions
-
+from rl.search.scheduler import Scheduler
 
 class BaseAlgo:
     def __init__(
@@ -59,27 +59,34 @@ class BaseAlgo:
             config_list = [env_params.copy(), args.__dict__.copy(), {'NUM_MPI': mpi_utils.get_size()}]
             log_config(config=merge_configs(config_list), output_dir=self.log_path)
     
+
+    # Evaluate agent
     def run_eval(self, use_test_env=False):
         env = self.env
         if use_test_env and hasattr(self, 'test_env'):
             env = self.test_env
         total_success_count = 0
         total_trial_count = 0
+
+        # Evaluate agent over n_test_rollouts playouts
         for n_test in range(self.args.n_test_rollouts):
             info = None
             observation = env.reset()
-            ob = observation['observation']
-            bg = observation['desired_goal']
-            ag = observation['achieved_goal']
+            ob = observation['observation']    # Current state
+            bg = observation['desired_goal']   # Subgoal?
+            ag = observation['achieved_goal']  # Final goal?
             ag_origin = ag.copy()
+
+            # Perform playout
             for timestep in range(env._max_episode_steps):
                 a = self.agent.get_actions(ob, bg)
                 observation, _, _, info = env.step(a)
                 ob = observation['observation']
                 bg = observation['desired_goal']
                 ag = observation['achieved_goal']
-                ag_changed = np.abs(self.reward_func(ag_origin, ag, None))
+                ag_changed = np.abs(self.reward_func(ag_origin, ag, None))  # TODO TODO TODO
                 self.monitor.store(Inner_Test_AgChangeRatio=np.mean(ag_changed))
+            
             ag_changed = np.abs(self.reward_func(ag_origin, ag, None))
             self.monitor.store(TestAgChangeRatio=np.mean(ag_changed))
             if self.num_envs > 1:
@@ -239,6 +246,7 @@ class Algo(BaseAlgo):
             self.collect_experience(act_randomly=True, train_agent=False)
         
         for epoch in range(self.args.n_epochs):
+            self.planner.scheduler.set_epoch(epoch)
             if mpi_utils.is_root():
                 print('Epoch %d: Iter (out of %d)=' % (epoch, self.args.n_cycles), end=' ')
                 sys.stdout.flush()

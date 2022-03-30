@@ -11,9 +11,9 @@ for name_t in all_name:
         random_start = True
         goal_args = None
         if name_t[-4:] == 'Maze' or name_t[-4:] == 'aze1':
-            goal_args = [[-4, -4], [20, 20]]
+            goal_args = [[-4, -4], [20, 20]]  # Goal can be anywhere
         if Test == 'Test':
-            goal_args = [[0.0, 16.0], [1e-3, 16 + 1e-3]]
+            goal_args = [[0.0, 16.0], [1e-3, 16 + 1e-3]]  # Goal at specific location (with certain margin)
             random_start = False
             # The episode length for test is 500
             max_timestep = 500

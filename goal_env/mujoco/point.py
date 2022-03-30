@@ -23,6 +23,15 @@ class PointEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def _step(self, a):
         return self.step(a)
     
+    def viewer_setup(self):
+        self.viewer.cam.distance = self.model.stat.extent
+        # Center point is (4,4,4)
+        self.viewer.cam.lookat[0] = 4
+        self.viewer.cam.lookat[1] = 4
+        self.viewer.cam.lookat[2] = 4
+        self.viewer.cam.trackbodyid = 1
+        self.viewer.cam.elevation = -90
+
     def step(self, action):
         action[0] = 0.2 * action[0]
         qpos = np.copy(self.data.qpos)

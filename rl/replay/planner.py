@@ -5,6 +5,7 @@ import os.path as osp
 
 from rl.utils import mpi_utils
 
+#Replay buffer!!!
 
 def sample_her_transitions(buffer, reward_func, batch_size, future_step, future_p=1.0):
     assert all(k in buffer for k in ['ob', 'ag', 'bg', 'a'])
@@ -67,10 +68,10 @@ class Replay:
         batch_size = ob_list.shape[0]
         with self.lock:
             idxs = self._get_storage_idx(batch_size=batch_size)
-            self.buffers['ob'][idxs] = ob_list.copy()
-            self.buffers['ag'][idxs] = ag_list.copy()
-            self.buffers['bg'][idxs] = bg_list.copy()
-            self.buffers['a'][idxs] = a_list.copy()
+            self.buffers['ob'][idxs] = ob_list.copy()   # State
+            self.buffers['ag'][idxs] = ag_list.copy()   # Achieved state after N steps
+            self.buffers['bg'][idxs] = bg_list.copy()   # Desired goal
+            self.buffers['a'][idxs] = a_list.copy()     # Action taken from state
             self.n_transitions_stored += self.horizon * batch_size
     
     def sample(self, batch_size):

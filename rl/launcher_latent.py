@@ -24,7 +24,7 @@ def get_env_params(env):
     obs = env.reset()
     params = {'obs': obs['observation'].shape[0], 'goal': obs['desired_goal'].shape[0],
               'action': env.action_space.shape[0],
-              'action_max': env.action_space.high[0],  # env.action_space.high[0],
+              'action_max': env.action_space.high[0],
               'max_timesteps': env._max_episode_steps}
     return params
 
@@ -46,6 +46,7 @@ def launch(args):
     rank = mpi_utils.get_rank()
     seed = args.seed + rank * args.n_workers
     
+    # Initialize seed for all componentes
     env.seed(seed)
     test_env.seed(seed)
     random.seed(seed)
@@ -57,6 +58,7 @@ def launch(args):
     assert np.all(env.action_space.high == -env.action_space.low)
     env_params = get_env_params(env)
     
+    # Returns 0 when within goal_eps radius of goal but -1 otherwise
     def compute_reward(state, goal, info):
         assert state.shape == goal.shape
         dist = np.linalg.norm(state - goal, axis=-1)
@@ -65,6 +67,7 @@ def launch(args):
     reward_func = compute_reward
     monitor = Monitor()
     
+    # If more than one worker make new envs for each worker
     if args.n_workers > 1:
         env = get_env_with_id(num_envs=args.n_workers, env_id=args.env_name)
         env.seed(seed)
@@ -73,6 +76,7 @@ def launch(args):
         test_env.seed(seed)
     
     ckpt_name = args.ckpt_name
+    # Generate checkpoint name based on template (time, date, etc.)
     if len(ckpt_name) == 0:
         data_time = time.ctime().split()[1:4]
         ckpt_name = data_time[0] + '-' + data_time[1]
@@ -83,6 +87,7 @@ def launch(args):
             ckpt_name += '-' + str(int(time_))
         args.ckpt_name = ckpt_name
     
+    # Create class instances
     agent = Agent(env_params, args)
     replay = Replay(env_params, args, reward_func)
     learner = Learner(agent, monitor, args)

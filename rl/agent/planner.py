@@ -11,6 +11,7 @@ from rl.utils import mpi_utils, net_utils
 from rl.agent.normalizer import Normalizer
 
 
+# Models D(s,a,g)
 class DistCritic(nn.Module):
     def __init__(self, env_params, args):
         super().__init__()
@@ -21,15 +22,16 @@ class DistCritic(nn.Module):
     def forward(self, pi_inputs, actions):
         dist = self.dist(pi_inputs, actions)
         log_gamma = np.log(self.gamma)
-        return - (1 - torch.exp(dist * log_gamma)) / (1 - self.gamma)
+        return - (1 - torch.exp(dist * log_gamma)) / (1 - self.gamma)  # Getting D(s,a,g) by altering Equation 3
     
-    def get_dist(self, pi_inputs, actions):
+    def get_dist(self, pi_inputs, actions):   # pi_inputs contains both state and goal (see get_dists(..) in rl/agent/latent_planner.py)
         dist = self.dist(pi_inputs, actions)
         if self.args.q_offset:
             dist += 1.0
         return dist
 
 
+# Comments for this class can be seen in rl/agent/latent_planner.py
 class Agent(BaseAgent):
     def __init__(self, env_params, args, name='agent'):
         super().__init__(env_params, args, name=name)

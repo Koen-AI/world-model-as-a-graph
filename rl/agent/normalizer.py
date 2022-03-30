@@ -7,6 +7,7 @@ except ImportError:
     MPI = None
 
 
+# Used to normalize states and goals
 class Normalizer:
     def __init__(self, size, eps=1e-2, default_clip_range=np.inf):
         self.size = size

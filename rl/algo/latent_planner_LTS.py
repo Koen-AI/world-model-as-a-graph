@@ -29,7 +29,7 @@ class Algo(BaseAlgo):
             reward_func,
             name=name,
         )
-        self.planner = Planner(agent, replay, monitor, args) 
+        self.planner = Planner(agent, replay, monitor, args)   # TODO: Floyd algorithm?
         self.test_env = test_env
         self.fps_landmarks = None
         self._clusters_initialized = False
@@ -37,6 +37,7 @@ class Algo(BaseAlgo):
     # Are there enough samples in the replay buffer to form centroids/landmarks and start planning?
     def can_plan(self):
         replay_big_enough = self.replay.current_size > self.args.start_planning_n_traj
+        #print("can_plan = ", replay_big_enough, "\nself.replay.current_size = ", self.replay.current_size)
         return replay_big_enough
     
     # Get action with optional noise or randomisation
@@ -225,6 +226,8 @@ class Algo(BaseAlgo):
         import matplotlib.patches as patches
         from matplotlib.lines import Line2D
         
+        #FIXME absolutely remove this line!!!
+        print("success_rate = ", self.run_test_env_plan_eval())
 
         if self.planner.scheduler and self.planner.scheduler.empty:
             self.planner.scheduler.activate(27)
@@ -232,7 +235,6 @@ class Algo(BaseAlgo):
         def evaluate(args):
             import imageio
             T, fail = [], []
-            S = []
             success, sum_duration, sum_subgoals_used = 0, 0, 0
             env = self.test_env
             demo_length = max(args.video, args.plot)
@@ -261,9 +263,12 @@ class Algo(BaseAlgo):
                             video.append_data(env.render(mode='rgb_array'))
                         
                         sub_goals = self.planner.get_subgoals(ob, bg.copy())
-                        
+                        """
+                        #bg.copy()
+                        sub_goals = np.expand_dims(bg.copy(), axis=0)#self.planner.get_subgoals(ob, bg.copy())
+                        """
                         s.append(tuple(sub_goals[0]))
-                        S.append(tuple(sub_goals[0]))
+
                         # Plot next subgoal
                         plt.plot(sub_goals[0][0], sub_goals[0][1], linestyle='None', marker='o', color='limegreen', markersize=7, alpha=0.2)
 
@@ -290,7 +295,7 @@ class Algo(BaseAlgo):
                         T.append(t)
                         sum_subgoals_used += len(np.unique(s, axis=0))
             
-            # Plot paths# Plot paths
+            # Plot paths
             for t in T:
                 plt.plot([i[0] for i in t], [i[1] for i in t], color='navy', alpha=0.1)
             plt.plot(start[0], start[1], linestyle='None', marker='D', color='navy', markersize=10)     # STARTING POINT
@@ -304,8 +309,6 @@ class Algo(BaseAlgo):
             return round(success/args.plot, 3), round(sum_duration/args.plot, 3), round(sum_subgoals_used/args.plot, 3)
         
         success_rate, duration, subgoals = evaluate(args)
-        
-        
         if args.plot > 0:
             # Plot landmarks
             A = self.agent.ae.decoder(self.agent.cluster.comp_mean)
@@ -380,6 +383,9 @@ class Algo(BaseAlgo):
                 ag = observation['achieved_goal']
                 ag_changed = np.abs(self.reward_func(ag_origin, ag, None))
                 self.monitor.store(Inner_PlanTest_AgChangeRatio=np.mean(ag_changed))
+                #if info['is_success'] == 1.0:
+                    #print("stopped early!")
+                    #break
             
             ag_changed = np.abs(self.reward_func(ag_origin, ag, None))
             self.monitor.store(TestPlan_AgChangeRatio=np.mean(ag_changed))
@@ -398,6 +404,7 @@ class Algo(BaseAlgo):
         success_rate = total_success_count / total_trial_count
         if mpi_utils.use_mpi():
             success_rate = mpi_utils.global_mean(np.array([success_rate]))[0]
+        print("success_rate = ", success_rate)
         return success_rate
     
     # Train the planning-component of L3P
