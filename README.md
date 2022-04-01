@@ -1,5 +1,5 @@
 # Learning Latent Landmarks for Planning: Planning over Longer Distances
-![pytorch](https://img.shields.io/badge/pytorch-v1.5.1+cu101-blue.svg) ![tensorflow](https://img.shields.io/badge/tensorflow-v1.13.1-blue.svg) ![license](https://img.shields.io/badge/license-MIT-blue.svg)
+![pytorch](https://img.shields.io/badge/pytorch-v1.7.1+cu101-blue.svg) ![tensorflow](https://img.shields.io/badge/tensorflow-v1.13.1-blue.svg) ![license](https://img.shields.io/badge/license-MIT-blue.svg)
 
 This project is an extension of the paper: [**World Model as a Graph: 
 Learning Latent Landmarks for Planning**](https://arxiv.org/abs/2011.12491) ([GitHub](https://github.com/LunjunZhang/world-model-as-a-graph)) by Zhang et al. **World Model as a Graph: 
@@ -22,7 +22,7 @@ The same packages as the original paper also apply to this repo:
 ```
 python==3.7.4
 numpy==1.19.5
-torch==1.5.1+cu101
+torch==1.7.1+cu101
 tensorflow==1.13.1
 gym==0.13.1
 mpi4py==3.0.3
